@@ -80,12 +80,10 @@ const schema = a.schema({
     .authorization((allow) => [
       // El dueño de la sala puede gestionar todos los miembros
       allow.owner().to(['read', 'create', 'update', 'delete']),
-      // El miembro puede actualizar su propia información
-      allow.authenticated().to(['read', 'update']),
       // Admin puede hacer todo
       allow.groups(['admin']).to(['read', 'create', 'update', 'delete']),
-      // Todos los usuarios autenticados pueden leer
-      allow.authenticated().to(['read', 'create']),
+      // Todos los usuarios autenticados pueden leer y posiblemente actualizar su información
+      allow.authenticated().to(['read', 'create', 'update']),
       // Usuarios públicos pueden leer vía API key
       allow.publicApiKey().to(['read']),
     ]),
