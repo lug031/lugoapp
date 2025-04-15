@@ -5,7 +5,7 @@ const schema = a.schema({
     .model({
       email: a.string().required(),
       username: a.string().required(),
-      verified: a.boolean().default(false),
+      verified: a.boolean(),
       profilePicture: a.string(),
       streamLink: a.string(),
       fullName: a.string(),
@@ -34,6 +34,7 @@ const schema = a.schema({
       lead: a.belongsTo('User', 'leadID'),
       leadIsPlaying: a.boolean(), // Indica si el lead también está jugando
       members: a.hasMany('RoomMember', 'roomID'),
+      invites: a.hasMany('RoomInvite', 'roomID'), // Añadido la relación inversa
       inviteLink: a.string(),
       inviteLinkExpiry: a.datetime(),
       team1Name: a.string(),
@@ -51,7 +52,7 @@ const schema = a.schema({
       allow.owner().to(['read', 'update', 'delete']),
       // Admin puede hacer todo
       allow.groups(['admin']).to(['read', 'create', 'update', 'delete']),
-      // Usuarios autenticados pueden leer y crear salas
+      // Todos los usuarios autenticados pueden leer y crear salas
       allow.authenticated().to(['read', 'create']),
       // Usuarios públicos pueden leer salas finalizadas
       allow.publicApiKey().to(['read']),
@@ -121,6 +122,7 @@ const schema = a.schema({
       matchNotes: a.string(),
       memberStats: a.hasMany('MemberStat', 'roomStatsID'),
       createdAt: a.datetime(),
+      owner: a.string(), // Campo para autorización por propietario
     })
     .authorization((allow) => [
       // El dueño de la sala puede crear y gestionar estadísticas
@@ -141,12 +143,15 @@ const schema = a.schema({
       member: a.belongsTo('RoomMember', 'memberID'),
       nickname: a.string().required(),
       team: a.enum(['team1', 'team2']),
-      kills: a.integer().default(0),
-      deaths: a.integer().default(0),
-      assists: a.integer().default(0),
+      rank: a.integer(), // Guardamos el rango que tenía durante el juego
+      gameplay: a.integer(), // Guardamos el gameplay que tenía durante el juego
+      kills: a.integer(),
+      deaths: a.integer(),
+      assists: a.integer(),
       heroPlayed: a.string(),
       performance: a.enum(['poor', 'average', 'good', 'excellent']),
       notes: a.string(),
+      owner: a.string(), // Campo para autorización por propietario
     })
     .authorization((allow) => [
       // El dueño de la sala puede crear y gestionar estadísticas de miembros
