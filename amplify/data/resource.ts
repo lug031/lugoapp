@@ -34,7 +34,7 @@ const schema = a.schema({
       lead: a.belongsTo('User', 'leadID'),
       leadIsPlaying: a.boolean(), // Indica si el lead también está jugando
       members: a.hasMany('RoomMember', 'roomID'),
-      invites: a.hasMany('RoomInvite', 'roomID'), // Añadido la relación inversa
+      invites: a.hasMany('RoomInvite', 'roomID'), // Relación inversa
       inviteLink: a.string(),
       inviteLinkExpiry: a.datetime(),
       team1Name: a.string(),
@@ -74,6 +74,7 @@ const schema = a.schema({
       gameplay: a.integer(), // Habilidad de gameplay (1-10)
       joinedAt: a.datetime(),
       isActive: a.boolean(),
+      stats: a.hasMany('MemberStat', 'memberID'), // Relación inversa añadida
       owner: a.string(), // Campo para autorización por propietario
     })
     .authorization((allow) => [
