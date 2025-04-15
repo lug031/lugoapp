@@ -1,191 +1,179 @@
-// src/composables/useInactivity.ts
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
-import { useToast } from '@/composables/useToast'
+import { useToast } from './useToast'
 
-export interface InactivityOptions {
-  timeout?: number // en milisegundos
-  warningTime?: number // en milisegundos antes del timeout
-  events?: string[] // eventos que reinician el temporizador
+interface InactivityOptions {
+  timeout?: number // Tiempo de inactividad en milisegundos
+  warningTime?: number // Tiempo antes de cierre de sesión para mostrar advertencia
+  modalTime?: number // Tiempo que se muestra el modal de advertencia
+  events?: string[] // Eventos que reinician el temporizador
+  excludeRoutes?: string[] // Rutas excluidas del cierre de sesión automático
 }
-
-// Estado global compartido para que todos los componentes accedan a los mismos datos
-const isWarningVisible = ref(false)
-const remainingSeconds = ref(0)
-const isTracking = ref(false)
 
 export function useInactivity(options: InactivityOptions = {}) {
   const authStore = useAuthStore()
-  const router = useRouter()
-  const { showToast } = useToast()
+  const toast = useToast()
 
-  // Valores predeterminados
-  /*const defaultTimeout = import.meta.env.DEV ? 20 * 1000 : 15 * 60 * 1000 // 20s en dev, 15min en prod
-  const defaultWarningTime = import.meta.env.DEV ? 10 * 1000 : 60 * 1000 // 10s en dev, 1min en prod*/
-  const defaultTimeout = 15 * 60 * 1000
-  const defaultWarningTime = 60 * 1000
-  const defaultEvents = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click']
-
-  // Configure values
-  const inactivityTimeout = ref(options.timeout || defaultTimeout)
-  const warningTimeout = ref(options.warningTime || defaultWarningTime)
-  const events = options.events || defaultEvents
-
-  // Estado interno
-  const timer = ref<ReturnType<typeof setTimeout> | null>(null)
-  const warningTimer = ref<ReturnType<typeof setTimeout> | null>(null)
-  const countdownInterval = ref<ReturnType<typeof setInterval> | null>(null)
-
-  // Limpiar todos los temporizadores
-  const clearAllTimers = () => {
-    if (timer.value) {
-      clearTimeout(timer.value)
-      timer.value = null
-    }
-    if (warningTimer.value) {
-      clearTimeout(warningTimer.value)
-      warningTimer.value = null
-    }
-    if (countdownInterval.value) {
-      clearInterval(countdownInterval.value)
-      countdownInterval.value = null
-    }
-    isWarningVisible.value = false
+  // Opciones predeterminadas
+  const defaultOptions: Required<InactivityOptions> = {
+    timeout: 30 * 60 * 1000, // 30 minutos por defecto
+    warningTime: 5 * 60 * 1000, // Advertencia 5 minutos antes
+    modalTime: 2 * 60 * 1000, // Modal visible por 2 minutos
+    events: ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'],
+    excludeRoutes: ['/login', '/register', '/reset-password'],
   }
 
-  // Función de cierre de sesión
-  const logout = async () => {
-    clearAllTimers()
-    isWarningVisible.value = false
-
-    if (authStore.isAuthenticated) {
-      try {
-        await authStore.logout()
-        router.push('/')
-        showToast({
-          message: 'Tu sesión ha expirado por inactividad',
-          type: 'info',
-          duration: 5000,
-        })
-      } catch (error) {
-        console.error('Error al cerrar sesión por inactividad:', error)
-      }
-    }
+  // Combinar opciones proporcionadas con las predeterminadas
+  const mergedOptions: Required<InactivityOptions> = {
+    ...defaultOptions,
+    ...options,
   }
 
-  // Función para mostrar la advertencia
+  // Estados
+  const timeoutId = ref<number | null>(null)
+  const warningTimeoutId = ref<number | null>(null)
+  const isWarningVisible = ref(false)
+  const secondsRemaining = ref(0)
+  const lastActivity = ref(Date.now())
+
+  // Reiniciar el temporizador de inactividad
+  const resetInactivityTimer = () => {
+    if (!authStore.isAuthenticated) return
+
+    lastActivity.value = Date.now()
+
+    // Limpiar temporizadores existentes
+    if (timeoutId.value) {
+      window.clearTimeout(timeoutId.value)
+      timeoutId.value = null
+    }
+
+    if (warningTimeoutId.value) {
+      window.clearTimeout(warningTimeoutId.value)
+      warningTimeoutId.value = null
+    }
+
+    // Ocultar advertencia si está visible
+    if (isWarningVisible.value) {
+      isWarningVisible.value = false
+    }
+
+    // Configurar temporizador de advertencia
+    warningTimeoutId.value = window.setTimeout(() => {
+      showWarning()
+    }, mergedOptions.timeout - mergedOptions.warningTime)
+
+    // Configurar temporizador de cierre de sesión
+    timeoutId.value = window.setTimeout(() => {
+      performLogout()
+    }, mergedOptions.timeout)
+  }
+
+  // Mostrar advertencia de cierre de sesión inminente
   const showWarning = () => {
-    isWarningVisible.value = true
-    remainingSeconds.value = Math.floor(warningTimeout.value / 1000)
+    if (!authStore.isAuthenticated) return
 
-    // Iniciar la cuenta regresiva
-    countdownInterval.value = setInterval(() => {
-      remainingSeconds.value -= 1
-      if (remainingSeconds.value <= 0) {
-        if (countdownInterval.value) {
-          clearInterval(countdownInterval.value)
-        }
+    isWarningVisible.value = true
+    secondsRemaining.value = Math.floor(mergedOptions.warningTime / 1000)
+
+    // Mostrar notificación
+    toast.warning('Tu sesión está por expirar debido a inactividad', 'top-right', 10000)
+
+    // Iniciar cuenta regresiva
+    const countdownInterval = setInterval(() => {
+      secondsRemaining.value -= 1
+
+      if (secondsRemaining.value <= 0) {
+        clearInterval(countdownInterval)
       }
     }, 1000)
 
-    // Configurar el temporizador final para cerrar sesión
-    timer.value = setTimeout(logout, warningTimeout.value)
+    // Establecer tiempo límite para el modal
+    setTimeout(() => {
+      if (isWarningVisible.value) {
+        isWarningVisible.value = false
+      }
+    }, mergedOptions.modalTime)
   }
 
-  // Función principal para reiniciar el temporizador
-  const resetTimer = () => {
-    // Solo proceder si estamos rastreando y el usuario está autenticado
-    if (!isTracking.value || !authStore.isAuthenticated) return
+  // Realizar cierre de sesión por inactividad
+  const performLogout = async () => {
+    if (!authStore.isAuthenticated) return
 
-    clearAllTimers()
+    // Limpiar temporizadores
+    if (timeoutId.value) {
+      window.clearTimeout(timeoutId.value)
+      timeoutId.value = null
+    }
 
-    // Configurar el temporizador de advertencia
-    const timeUntilWarning = inactivityTimeout.value - warningTimeout.value
-    warningTimer.value = setTimeout(showWarning, timeUntilWarning)
-  }
+    if (warningTimeoutId.value) {
+      window.clearTimeout(warningTimeoutId.value)
+      warningTimeoutId.value = null
+    }
 
-  // Iniciar el rastreo de inactividad
-  const startTracking = () => {
-    if (isTracking.value) return
+    isWarningVisible.value = false
 
-    isTracking.value = true
-
-    // Añadir event listeners
-    events.forEach((event) => {
-      document.addEventListener(event, resetTimer)
-    })
-
-    // Iniciar el temporizador
-    resetTimer()
-  }
-
-  // Detener el rastreo de inactividad
-  const stopTracking = () => {
-    if (!isTracking.value) return
-
-    isTracking.value = false
-
-    // Eliminar event listeners
-    events.forEach((event) => {
-      document.removeEventListener(event, resetTimer)
-    })
-
-    clearAllTimers()
-  }
-
-  // Configurar el tiempo de inactividad
-  const setInactivityTime = (milliseconds: number) => {
-    inactivityTimeout.value = milliseconds
-    if (isTracking.value) {
-      resetTimer() // Reiniciar los temporizadores con el nuevo tiempo
+    try {
+      await authStore.logout()
+      toast.info('Tu sesión ha expirado por inactividad', 'top-right', 5000)
+    } catch (error) {
+      console.error('Error al cerrar sesión por inactividad:', error)
     }
   }
 
-  // Extender la sesión (para usar en el componente de advertencia)
-  const extendSession = () => {
-    resetTimer()
-    showToast({
-      message: 'Sesión extendida',
-      type: 'success',
-      duration: 3000,
+  // Inicializar eventos de actividad del usuario
+  const setupActivityEvents = () => {
+    const handleUserActivity = () => {
+      resetInactivityTimer()
+    }
+
+    mergedOptions.events.forEach((eventName) => {
+      window.addEventListener(eventName, handleUserActivity)
+    })
+
+    // Limpiar eventos al desmontar
+    onUnmounted(() => {
+      mergedOptions.events.forEach((eventName) => {
+        window.removeEventListener(eventName, handleUserActivity)
+      })
     })
   }
 
-  // Observar cambios en la autenticación
+  // Observar estado de autenticación
   watch(
     () => authStore.isAuthenticated,
     (isAuthenticated) => {
       if (isAuthenticated) {
-        startTracking()
+        resetInactivityTimer()
       } else {
-        stopTracking()
+        // Limpiar temporizadores si el usuario no está autenticado
+        if (timeoutId.value) {
+          window.clearTimeout(timeoutId.value)
+          timeoutId.value = null
+        }
+
+        if (warningTimeoutId.value) {
+          window.clearTimeout(warningTimeoutId.value)
+          warningTimeoutId.value = null
+        }
       }
     },
-    { immediate: true },
   )
 
-  // Lifecycle hooks
+  // Inicializar
   onMounted(() => {
+    setupActivityEvents()
+
     if (authStore.isAuthenticated) {
-      startTracking()
+      resetInactivityTimer()
     }
   })
 
-  onUnmounted(() => {
-    // No detenemos el rastreo al desmontar, solo limpiamos los temporizadores
-    // para que otros componentes puedan seguir usando el estado global
-    clearAllTimers()
-  })
-
   return {
-    isTracking,
     isWarningVisible,
-    remainingSeconds,
-    startTracking,
-    stopTracking,
-    resetTimer,
-    extendSession,
-    setInactivityTime,
+    secondsRemaining,
+    resetInactivityTimer,
+    extendSession: resetInactivityTimer,
+    logout: performLogout,
   }
 }

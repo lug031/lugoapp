@@ -17,17 +17,67 @@ interface Toast {
   timeout?: number
 }
 
+// Interfaz para mensaje toast con opciones adicionales
+export interface ToastOptions {
+  message: string
+  type?: ToastType
+  position?: ToastPosition
+  duration?: number
+}
+
 // Singleton pattern para mantener un único estado de toasts en toda la aplicación
 const toasts = ref<Toast[]>([])
 let nextId = 1
 
 export function useToast() {
+  // Método flexible que acepta tanto string como objeto de opciones
   const showToast = (
-    message: string,
-    type: ToastType = 'info',
-    position: ToastPosition = 'top-right',
-    timeout: number = 3000,
+    messageOrOptions: string | ToastOptions,
+    typeOrPosition?: ToastType | ToastPosition,
+    duration?: number,
   ) => {
+    let message: string
+    let type: ToastType = 'info'
+    let position: ToastPosition = 'top-right'
+    let timeout: number = 3000
+
+    // Manejar diferentes formas de llamar a la función
+    if (typeof messageOrOptions === 'string') {
+      message = messageOrOptions
+
+      // Si el segundo parámetro es un tipo de toast válido
+      if (
+        typeOrPosition &&
+        ['success', 'error', 'warning', 'info'].includes(typeOrPosition as string)
+      ) {
+        type = typeOrPosition as ToastType
+      }
+      // Si el segundo parámetro es una posición válida
+      else if (
+        typeOrPosition &&
+        [
+          'top-right',
+          'top-left',
+          'bottom-right',
+          'bottom-left',
+          'top-center',
+          'bottom-center',
+        ].includes(typeOrPosition as string)
+      ) {
+        position = typeOrPosition as ToastPosition
+      }
+
+      if (duration) {
+        timeout = duration
+      }
+    } else {
+      // Es un objeto de opciones
+      message = messageOrOptions.message
+      type = messageOrOptions.type || type
+      position = messageOrOptions.position || position
+      timeout = messageOrOptions.duration || timeout
+    }
+
     const id = nextId++
     const toast: Toast = { id, message, type, position, timeout }
 
@@ -61,16 +111,36 @@ export function useToast() {
     clearToasts,
 
     // Métodos de conveniencia
-    success: (message: string, position?: ToastPosition, timeout?: number) =>
-      showToast(message, 'success', position, timeout),
+    success: (message: string | ToastOptions, position?: ToastPosition, duration?: number) => {
+      if (typeof message === 'string') {
+        return showToast(message, 'success', duration)
+      } else {
+        return showToast({ ...message, type: 'success' })
+      }
+    },
 
-    error: (message: string, position?: ToastPosition, timeout?: number) =>
-      showToast(message, 'error', position, timeout),
+    error: (message: string | ToastOptions, position?: ToastPosition, duration?: number) => {
+      if (typeof message === 'string') {
+        return showToast(message, 'error', duration)
+      } else {
+        return showToast({ ...message, type: 'error' })
+      }
+    },
 
-    warning: (message: string, position?: ToastPosition, timeout?: number) =>
-      showToast(message, 'warning', position, timeout),
+    warning: (message: string | ToastOptions, position?: ToastPosition, duration?: number) => {
+      if (typeof message === 'string') {
+        return showToast(message, 'warning', duration)
+      } else {
+        return showToast({ ...message, type: 'warning' })
+      }
+    },
 
-    info: (message: string, position?: ToastPosition, timeout?: number) =>
-      showToast(message, 'info', position, timeout),
+    info: (message: string | ToastOptions, position?: ToastPosition, duration?: number) => {
+      if (typeof message === 'string') {
+        return showToast(message, 'info', duration)
+      } else {
+        return showToast({ ...message, type: 'info' })
+      }
+    },
   }
 }
